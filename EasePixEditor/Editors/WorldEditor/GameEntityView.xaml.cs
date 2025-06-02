@@ -3,6 +3,7 @@ using EasePixEditor.GameProject;
 using EasePixEditor.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -19,6 +20,18 @@ using System.Windows.Shapes;
 
 namespace EasePixEditor.Editors
 {
+    public class NullableBoolToBoolConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return value is bool b && b == true;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return value is bool b && b == true;
+        }
+    }
     /// <summary>
     /// Interaction logic for GameEntityView.xaml
     /// </summary>

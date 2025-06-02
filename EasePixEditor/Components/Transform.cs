@@ -1,6 +1,7 @@
 ﻿using EasePixEditor.Utilities;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using System.Runtime.Serialization;
 using System.Text;
@@ -57,10 +58,14 @@ namespace EasePixEditor.Components
 
         public override IMSComponent GetMultiselectionComponent(MSEntity msEntity) => new MSTransform(msEntity);
 
-        public Transform(GameEntity owner) : base(owner)
+        public override void WriteToBinary(BinaryWriter bw)
         {
-
+            bw.Write(_position.X); bw.Write(_position.Y); bw.Write(_position.Z);
+            bw.Write(_rotation.X); bw.Write(_rotation.Y); bw.Write(_rotation.Z);
+            bw.Write(_scale.X); bw.Write(_scale.Y); bw.Write(_scale.Z);
         }
+
+        public Transform(GameEntity owner) : base(owner) { }
     }
 
     sealed class MSTransform : MSComponent<Transform>
