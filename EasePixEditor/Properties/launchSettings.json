@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "EasePixEditor": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}
