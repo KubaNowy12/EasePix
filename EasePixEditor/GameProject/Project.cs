@@ -54,7 +54,7 @@ namespace EasePixEditor.GameProject
             get => _availableScripts;
             private set
             {
-                if (_availableScripts != null)
+                if (_availableScripts != value)
                 {
                     _availableScripts = value;
                     OnPropertyChanged(nameof(AvailableScripts));
