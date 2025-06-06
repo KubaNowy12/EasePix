@@ -48,6 +48,15 @@ namespace EasePixEditor.DllWrappers
         [DllImport(_engineDLL)]
         [return: MarshalAs(UnmanagedType.SafeArray)]
         public static extern string[] GetScriptNames();
+        [DllImport(_engineDLL)]
+        public static extern int CreateRenderSurface(IntPtr host, int width, int height);
+        [DllImport(_engineDLL)]
+        public static extern int RemoveRenderSurface(int surfaceId);
+        [DllImport(_engineDLL)]
+        public static extern IntPtr GetWindowHandle(int surfaceId);
+        [DllImport(_engineDLL)]
+        public static extern int ResizeRenderSurface(int surfaceId);
+
         internal static class EntityAPI
         {
             [DllImport(_engineDLL)]

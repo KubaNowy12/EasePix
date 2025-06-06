@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <typeinfo>
-#include<memory>
+#include <memory>
 #include <unordered_map>
 
 #if defined(_WIN64)
@@ -17,3 +17,10 @@
 #include "..\Utilities\Utilities.h"
 #include "..\Utilities\MathTypes.h"
 #include "PrimitiveTypes.h"
+#include "Id.h"
+
+#ifdef _DEBUG
+#define DEBUG_OP(x) x
+#else
+#define DEBUG_OP(x) (void(0))
+#endif
