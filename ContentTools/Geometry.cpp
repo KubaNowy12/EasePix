@@ -35,7 +35,7 @@ recalculate_normals(mesh& m)
 void
 process_normals(mesh& m, f32 smoothing_angle)
 {
-	const f32 cos_angle{ XMScalarCos(pi - smoothing_angle * pi / 180.f) };
+	const f32 cos_alpha{ XMScalarCos(pi - smoothing_angle * pi / 180.f) };
 	const bool is_hard_edge{ XMScalarNearEqual(smoothing_angle, 180.f, epsilon) };
 	const bool is_soft_edge{ XMScalarNearEqual(smoothing_angle, 0.f, epsilon) };
 	const u32 num_indices{ (u32)m.raw_indices.size() };
@@ -63,14 +63,14 @@ process_normals(mesh& m, f32 smoothing_angle)
 			{
 				for (u32 k{ j + 1 }; k < num_refs; ++k)
 				{
-					f32 n{ 0.f };
+					f32 cos_theta{ 0.f };
 					XMVECTOR n2{ XMLoadFloat3(&m.normals[refs[k]]) };
 					if (!is_soft_edge)
 					{
-						XMStoreFloat(&n, XMVector3Dot(n1, n2) * XMVector3ReciprocalLength(n1));
+						XMStoreFloat(&cos_theta, XMVector3Dot(n1, n2) * XMVector3ReciprocalLength(n1));
 					}
 
-					if (is_soft_edge || n >= cos_angle)
+					if (is_soft_edge || cos_theta >= cos_alpha)
 					{
 						n1 += n2;
 
