@@ -8,8 +8,14 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Engine", "Engine\Engine.vcxproj", "{EAB7EB3F-EFE4-40A1-AAF0-C379BDAE1BDB}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "EngineTest", "EngineTest\EngineTest.vcxproj", "{6458607B-95D6-43A9-8875-F9A1A4E4F656}"
+	ProjectSection(ProjectDependencies) = postProject
+		{EAB7EB3F-EFE4-40A1-AAF0-C379BDAE1BDB} = {EAB7EB3F-EFE4-40A1-AAF0-C379BDAE1BDB}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "EngineDLL", "EngineDLL\EngineDLL.vcxproj", "{58B4D27A-33B6-455B-A7FD-33A742CBCED2}"
+	ProjectSection(ProjectDependencies) = postProject
+		{EAB7EB3F-EFE4-40A1-AAF0-C379BDAE1BDB} = {EAB7EB3F-EFE4-40A1-AAF0-C379BDAE1BDB}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ContentTools", "ContentTools\ContentTools.vcxproj", "{D8DF2E90-D301-4E1F-8A8C-B8950BBCDB78}"
 EndProject
