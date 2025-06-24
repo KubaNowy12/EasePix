@@ -10,7 +10,7 @@ void
 recalculate_normals(mesh& m)
 {
 	const u32 num_indices{ (u32)m.raw_indices.size() };
-	m.normals.reserve(num_indices);
+	m.normals.resize(num_indices);
 
 	for (u32 i{ 0 }; i < num_indices; ++i)
 	{
@@ -102,7 +102,7 @@ process_uvs(mesh& m)
 	for (u32 i{ 0 }; i < num_indices; ++i)
 		idx_ref[old_indices[i]].emplace_back(i);
 
-	for (u32 i{ 0 }; i < num_indices; ++i)
+	for (u32 i{ 0 }; i < num_vertices; ++i)
 	{
 		auto& refs{ idx_ref[i] };
 		u32 num_refs{ (u32)refs.size() };
@@ -229,35 +229,35 @@ pack_mesh_data(const mesh& m, u8* const buffer, u64& at)
 {
 	constexpr u64 su32{ sizeof(u32) };
 	u32 s{ 0 };
-
+	// Mesh name
 	s = (u32)m.name.size();
 	memcpy(&buffer[at], &s, su32); at += su32;
 	memcpy(&buffer[at], m.name.c_str(), s); at += s;
-
+	// LOD id
 	s = m.lod_id;
 	memcpy(&buffer[at], &s, su32); at += su32;
-
+	// Vertex size
 	constexpr u32 vertex_size{ sizeof(packed_vertex::vertex_static) };
 	s = vertex_size;
 	memcpy(&buffer[at], &s, su32); at += su32;
-
+	// Number of vertices
 	const u32 num_vertices{ (u32)m.vertices.size() };
 	s = num_vertices;
 	memcpy(&buffer[at], &s, su32); at += su32;
-
+	// Index size (16 bit or 32 bit)
 	const u32 index_size{ (num_vertices < (1 << 16)) ? sizeof(u16) : sizeof(u32) };
 	s = index_size;
 	memcpy(&buffer[at], &s, su32); at += su32;
-
+	// Number of indices
 	const u32 num_indices{ (u32)m.indices.size() };
 	s = num_indices;
 	memcpy(&buffer[at], &s, su32); at += su32;
-
+	// LOD threshold
 	memcpy(&buffer[at], &m.lod_threshold, sizeof(f32)); at += sizeof(f32);
-
+	// Vertex data
 	s = vertex_size * num_vertices;
 	memcpy(&buffer[at], m.packed_vertices_static.data(), s); at += s;
-
+	// Index data
 	s = index_size * num_indices;
 	void* data{ (void*)m.indices.data() };
 	utl::vector<u16> indices;
