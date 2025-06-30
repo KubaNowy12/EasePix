@@ -1,0 +1,12 @@
+#pragma once
+#include "CommonHeaders.h"
+#include "Renderer.h"
+
+namespace easepix::graphics {
+	struct platform_interface
+	{
+		bool(*initialize)(void);
+		void(*shutdown)(void);
+		void(*render)(void);
+	};
+}

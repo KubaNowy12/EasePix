@@ -1,4 +1,5 @@
 #pragma once
+#ifdef TEST_WINDOW
 #include "Test.h"
 #include "..\Platform\PlatformTypes.h"
 #include "..\Platform\Platform.h"
@@ -73,3 +74,5 @@ public:
 		}
 	}
 };
+
+#endif

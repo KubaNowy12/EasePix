@@ -19,6 +19,7 @@
     <ClInclude Include="Platform\PlatformTypes.h" />
     <ClInclude Include="Graphics\Renderer.h" />
     <ClInclude Include="Utilities\Math.h" />
+    <ClInclude Include="Graphics\GraphicsPlatformInterface.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Components\Entity.cpp" />
@@ -28,5 +29,6 @@
     <ClCompile Include="Core\Engine.cpp" />
     <ClCompile Include="Content\ContentLoader.cpp" />
     <ClCompile Include="Platform\Platform.cpp" />
+    <ClCompile Include="Graphics\Renderer.cpp" />
   </ItemGroup>
 </Project>
