@@ -1,10 +1,13 @@
 #include "D3D12Core.h"
 #include "D3D12Resources.h"
 #include "D3D12Surface.h"
+#include "D3D12Helpers.h"
 
 using namespace Microsoft::WRL;
 
 namespace easepix::graphics::d3d12::core {
+	void create_a_root_signature();
+	void create_a_root_signature2();
 namespace {
 
 class d3d12_command
@@ -154,10 +157,12 @@ private:
 	u32							_frame_index{ 0 };
 };
 
+using surface_collection = utl::free_list<d3d12_surface>;
+
 ID3D12Device14*				main_device{ nullptr };
 IDXGIFactory7*				dxgi_factory{ nullptr };
 d3d12_command				gfx_command;
-utl::vector<d3d12_surface>	surfaces;
+surface_collection			surfaces;
 
 descriptor_heap				rtv_desc_heap{ D3D12_DESCRIPTOR_HEAP_TYPE_RTV };
 descriptor_heap				dsv_desc_heap{ D3D12_DESCRIPTOR_HEAP_TYPE_DSV };
@@ -168,7 +173,7 @@ utl::vector<IUnknown*>		deferred_releases[frame_buffer_count]{};
 u32							deferred_releases_flag[frame_buffer_count]{};
 std::mutex					deferred_releases_mutex{};
 
-constexpr DXGI_FORMAT render_target_format{ DXGI_FORMAT_R8G8B8A8_UNORM_SRGB };
+constexpr DXGI_FORMAT		render_target_format{ DXGI_FORMAT_R8G8B8A8_UNORM_SRGB };
 constexpr D3D_FEATURE_LEVEL minimum_feature_level{ D3D_FEATURE_LEVEL_11_0 };
 
 bool
@@ -314,6 +319,9 @@ initialize()
 	NAME_D3D12_OBJECT(srv_desc_heap.heap(), L"SRV Descriptor Heap");
 	NAME_D3D12_OBJECT(uav_desc_heap.heap(), L"UAV Descriptor Heap");
 
+	create_a_root_signature();
+	create_a_root_signature2();
+
 	return true;
 }
 
@@ -358,7 +366,7 @@ shutdown()
 	release(main_device);
 }
 
-ID3D12Device *const
+ID3D12Device14 *const
 device() { return main_device; }
 
 descriptor_heap&
@@ -384,8 +392,7 @@ void set_deferred_releases_flag() { deferred_releases_flag[current_frame_index()
 surface
 create_surface(platform::window window)
 {
-	surfaces.emplace_back(window);
-	surface_id id{ (u32)surfaces.size() - 1 };
+	surface_id id{ surfaces.add(window) };
 	surfaces[id].create_swap_chain(dxgi_factory, gfx_command.command_queue(), render_target_format);
 	return surface{ id };
 }
@@ -394,8 +401,7 @@ void
 remove_surface(surface_id id)
 {
 	gfx_command.flush();
-	surfaces[id].~d3d12_surface();
-	//surfaces[id] = d3d12_surface{};
+	surfaces.remove(id);
 }
 
 void
@@ -436,4 +442,156 @@ render_surface(surface_id id)
 	gfx_command.end_frame();
 }
 
+void create_a_root_signature()
+{
+	D3D12_ROOT_PARAMETER1 params[3];
+	{
+		auto& param = params[0];
+		param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+		D3D12_ROOT_CONSTANTS consts{};
+		consts.Num32BitValues = 2;
+		consts.ShaderRegister = 0;
+		consts.RegisterSpace = 0;
+		param.Constants = consts;
+		param.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	}
+	{
+		auto& param = params[1];
+		param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+		D3D12_ROOT_DESCRIPTOR1 root_desc{};
+		root_desc.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_NONE;
+		root_desc.ShaderRegister = 0;
+		root_desc.RegisterSpace = 0;
+		param.Descriptor = root_desc;
+		param.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+	}
+	{
+		auto& param = params[2];
+		param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		D3D12_ROOT_DESCRIPTOR_TABLE1 table{};
+		table.NumDescriptorRanges = 1;
+		D3D12_DESCRIPTOR_RANGE1 range{};
+		range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+		range.NumDescriptors = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		range.Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE;
+		range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		range.BaseShaderRegister = 0;
+		range.RegisterSpace = 0;
+		table.pDescriptorRanges = &range;
+		param.DescriptorTable = table;
+		param.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	}
+
+	D3D12_STATIC_SAMPLER_DESC sampler_desc{};
+	sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	sampler_desc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_ROOT_SIGNATURE_DESC1 desc{};
+	desc.Flags =
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_AMPLIFICATION_SHADER_ROOT_ACCESS |
+		D3D12_ROOT_SIGNATURE_FLAG_DENY_MESH_SHADER_ROOT_ACCESS;
+	desc.NumParameters = _countof(params);
+	desc.pParameters = &params[0];
+	desc.NumStaticSamplers = 1;
+	desc.pStaticSamplers = &sampler_desc;
+
+	D3D12_VERSIONED_ROOT_SIGNATURE_DESC rs_desc{};
+	rs_desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+	rs_desc.Desc_1_1 = desc;
+
+	HRESULT hr{ S_OK };
+	ID3DBlob* root_sig_blob{ nullptr };
+	ID3DBlob* error_blob{ nullptr };
+	if (FAILED(hr = D3D12SerializeVersionedRootSignature(&rs_desc, &root_sig_blob, &error_blob)))
+	{
+		DEBUG_OP(const char* error_msg{ error_blob ? (const char*)error_blob->GetBufferPointer() : "" });
+		DEBUG_OP(OutputDebugStringA(error_msg));
+		return;
+	}
+
+	assert(root_sig_blob);
+	ID3D12RootSignature* root_sig{ nullptr };
+	DXCall(hr = device()->CreateRootSignature(0, root_sig_blob->GetBufferPointer(), root_sig_blob->GetBufferSize(), IID_PPV_ARGS(&root_sig)));
+
+	release(root_sig_blob);
+	release(error_blob);
+
+	release(root_sig);
+}
+
+void create_a_root_signature2()
+{
+	d3dx::d3d12_descriptor_range range{ D3D12_DESCRIPTOR_RANGE_TYPE_SRV, D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND, 0 };
+	d3dx::d3d12_root_parameter params[3];
+	params[0].as_constants(2, D3D12_SHADER_VISIBILITY_PIXEL, 0);
+	params[1].as_cbv(D3D12_SHADER_VISIBILITY_PIXEL, 1);
+	params[2].as_descriptor_table(D3D12_SHADER_VISIBILITY_PIXEL, &range, 1);
+
+	d3dx::d3d12_root_signature_desc root_sig_desc{ &params[0], _countof(params) };
+	ID3D12RootSignature* root_sig{ root_sig_desc.create() };
+
+	release(root_sig);
+}
+
+ID3D12RootSignature* _root_signature;
+D3D12_SHADER_BYTECODE _vs{};
+
+template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type, typename T>
+class alignas(void*) d3d12_pipeline_state_subobject
+{
+public:
+	d3d12_pipeline_state_subobject() = default;
+	constexpr explicit d3d12_pipeline_state_subobject(T subobject) : _type{ type }, _subobject{ subobject }{}
+	d3d12_pipeline_state_subobject& operator=(const T& subobject) { _subobject = subobject; return *this; }
+	
+private:
+	const D3D12_PIPELINE_STATE_SUBOBJECT_TYPE _type{ type };
+	T _subobject{};
+};
+
+using d3d12_pipeline_state_subobject_root_signature = d3d12_pipeline_state_subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE, ID3D12RootSignature*>;
+using d3d12_pipeline_state_subobject_vs = d3d12_pipeline_state_subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS, D3D12_SHADER_BYTECODE>;
+
+void create_a_pipeline_state_object()
+{
+	struct {
+		struct alignas(void*) {
+			const D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type{ D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE };
+			ID3D12RootSignature* root_signature;
+		} root_sig;
+		struct alignas(void*) {
+			const D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type{ D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS };
+			D3D12_SHADER_BYTECODE vs_code{};
+		} vs;
+	} stream;
+
+	stream.root_sig.root_signature = _root_signature;
+	stream.vs.vs_code = _vs;
+
+	D3D12_PIPELINE_STATE_STREAM_DESC desc{};
+	desc.pPipelineStateSubobjectStream = &stream;
+	desc.SizeInBytes = sizeof(stream);
+
+	ID3D12PipelineState* pso{ nullptr };
+	device()->CreatePipelineState(&desc, IID_PPV_ARGS(&pso));
+
+	release(pso);
+}
+
+void create_a_pipeline_state_object2()
+{
+	struct {
+		d3dx::d3d12_pipeline_state_subobject_root_signature root_sig{ _root_signature };
+		d3dx::d3d12_pipeline_state_subobject_vs vs{ _vs };
+	} stream;
+
+	auto pso = d3dx::create_pipeline_state(&stream, sizeof(stream));
+
+	release(pso);
+}
 }
