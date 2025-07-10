@@ -19,15 +19,6 @@ public:
 		resize(count, value);
 	}
 
-	template<typename it, typename = std::enable_if_t<std::_Is_iterator_v<it>>>
-	constexpr explicit vector(it first, it last)
-	{
-		for (; first != last; ++first)
-		{
-			emplace_back(*first);
-		}
-	}
-
 	constexpr vector(const vector& o)
 	{
 		*this = o;
@@ -96,7 +87,7 @@ public:
 
 	constexpr void resize(u64 new_size)
 	{
-		static_assert(std::is_default_constructible_v<T>,
+		static_assert(std::is_default_constructible<T>::value,
 			"Type must be default-constructible.");
 
 		if (new_size > _size)
@@ -122,7 +113,7 @@ public:
 
 	constexpr void resize(u64 new_size, const T& value)
 	{
-		static_assert(std::is_copy_constructible_v<T>,
+		static_assert(std::is_copy_constructible<T>::value,
 			"Type must be copy-constructible.");
 
 		if (new_size > _size)
