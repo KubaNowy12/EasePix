@@ -5,6 +5,10 @@
 namespace easepix::graphics {
 namespace {
 
+constexpr const char* engine_shader_paths[]{
+	".\\shaders\\d3d12\\shaders.bin",
+};
+
 platform_interface gfx{};
 
 bool
@@ -19,6 +23,7 @@ set_platform_interface(graphics_platform platform)
 		return false;
 	}
 
+	assert(gfx.platform == platform);
 	return true;
 }
 
@@ -34,6 +39,18 @@ void
 shutdown()
 {
 	gfx.shutdown();
+}
+
+const char*
+get_engine_shaders_path()
+{
+	return engine_shader_paths[(u32)gfx.platform];
+}
+
+const char*
+get_engine_shaders_path(graphics_platform platform)
+{
+	return engine_shader_paths[(u32)platform];
 }
 
 surface

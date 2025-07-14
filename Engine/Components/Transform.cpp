@@ -35,7 +35,7 @@ create(init_info info, game_entity::entity entity)
 }
 
 void
-remove(component c)
+remove([[maybe_unused]] component c)
 {
 	assert(c.is_valid());
 }

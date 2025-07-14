@@ -1,6 +1,5 @@
 #pragma once
 #include "D3D12CommonHeaders.h"
-#include "D3D12Resources.h"
 
 namespace easepix::graphics::d3d12 {
 class d3d12_surface
