@@ -2,7 +2,11 @@
 #include "D3D12CommonHeaders.h"
 
 namespace easepix::graphics::d3d12 {
-class descriptor_heap;
+struct d3d12_frame_info
+{
+	u32 surface_width{};
+	u32 surface_height{};
+};
 }
 
 namespace easepix::graphics::d3d12::core {

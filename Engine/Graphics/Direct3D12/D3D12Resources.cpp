@@ -203,7 +203,7 @@ d3d12_depth_buffer::d3d12_depth_buffer(d3d12_texture_init_info info)
 	if (info.desc->Format == DXGI_FORMAT_D32_FLOAT)
 	{
 		info.desc->Format = DXGI_FORMAT_R32_TYPELESS;
-		srv_desc.Format = DXGI_FORMAT_R32_TYPELESS;
+		srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
 	}
 
 	srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
