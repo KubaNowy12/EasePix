@@ -1,9 +1,9 @@
+#ifdef _WIN64
 #include "Platform.h"
 #include "PlatformTypes.h"
 
 namespace easepix::platform {
 
-#ifdef _WIN64
 namespace {
 struct window_info
 {
@@ -106,6 +106,7 @@ void
 set_window_fullscreen(window_id id, bool is_fullscreen)
 {
 	window_info& info{ get_from_id(id) };
+	
 	if (info.is_fullscreen != is_fullscreen)
 	{
 		info.is_fullscreen = is_fullscreen;
@@ -164,7 +165,7 @@ is_window_closed(window_id id)
 }
 
 window
-create_window(const window_init_info* const init_info)
+create_window(const window_init_info* init_info)
 {
 	window_proc callback{ init_info ? init_info->callback : nullptr };
 	window_handle parent{ init_info ? init_info->parent : nullptr };
@@ -236,71 +237,9 @@ remove_window(window_id id)
 	DestroyWindow(info.hwnd);
 	windows.remove(id);
 }
-#else
-#error "Must implement at least one platform"
+
+}
+
+#include "IncludeWindowCpp.h"
+
 #endif
-
-void
-window::set_fullscreen(bool is_fullscreen) const
-{
-	assert(is_valid());
-	set_window_fullscreen(_id, is_fullscreen);
-}
-
-bool
-window::is_fullscreen() const
-{
-	assert(is_valid());
-	return is_window_fullscreen(_id);
-}
-
-void*
-window::handle() const
-{
-	assert(is_valid());
-	return get_window_handle(_id);
-}
-
-void
-window::set_caption(const wchar_t* caption) const
-{
-	assert(is_valid());
-	set_window_caption(_id, caption);
-}
-
-math::u32v4
-window::size() const
-{
-	assert(is_valid());
-	return get_window_size(_id);
-}
-
-void
-window::resize(u32 width, u32 height) const
-{
-	assert(is_valid());
-	resize_window(_id, width, height);
-}
-
-u32
-window::width() const
-{
-	math::u32v4 s{ size() };
-	return s.z - s.x;
-}
-
-u32
-window::height() const
-{
-	math::u32v4 s{ size() };
-	return s.w - s.y;
-}
-
-bool
-window::is_closed() const
-{
-	assert(is_valid());
-	return is_window_closed(_id);
-}
-
-}
