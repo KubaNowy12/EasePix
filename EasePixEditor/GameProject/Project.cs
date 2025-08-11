@@ -258,6 +258,7 @@ namespace EasePixEditor.GameProject
                 Scenes = new ReadOnlyObservableCollection<Scene>(_scenes);
                 OnPropertyChanged(nameof(Scenes));
             }
+
             ActiveScene = _scenes.FirstOrDefault(x => x.IsActive);
             Debug.Assert(ActiveScene != null);
 

@@ -20,6 +20,9 @@ namespace EasePixEditor.GameProject
     public partial class ProjectBrowserDialog : Window
     {
         private readonly CubicEase _easing = new CubicEase() { EasingMode = EasingMode.EaseInOut };
+
+        public static bool GotoNewProjectTab { get; set; }
+
         public ProjectBrowserDialog()
         {
             InitializeComponent();
@@ -29,12 +32,18 @@ namespace EasePixEditor.GameProject
         private void OnProjectBrowserDialogLoaded(object sender, RoutedEventArgs e)
         {
             Loaded -= OnProjectBrowserDialogLoaded;
-            if(!OpenProject.Projects.Any())
+            if(!OpenProject.Projects.Any() || GotoNewProjectTab)
             {
-                openProjectButton.IsEnabled = false;
-                openProjectView.Visibility = Visibility.Hidden;
+                if (!GotoNewProjectTab)
+                {
+                    openProjectButton.IsEnabled = false;
+                    openProjectView.Visibility = Visibility.Hidden;
+                }
+
                 OnToggleButton_Click(createProjectButton, new RoutedEventArgs());
             }
+
+            GotoNewProjectTab = false;
         }
 
         private void AnimateToCreateProject()
