@@ -9,10 +9,17 @@ using namespace easepix;
 
 graphics::render_surface _surfaces[4];
 time_it timer{};
+
+bool resized{ false };
+bool is_restarting{ false };
 void destroy_render_surface(graphics::render_surface& surface);
+bool test_initialize();
+void test_shutdown();
 
 LRESULT win_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
+	bool toggle_fullscreen{ false };
+
 	switch (msg)
 	{
 	case WM_DESTROY:
@@ -32,26 +39,52 @@ LRESULT win_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				}
 			}
 		}
-		if (all_closed)
+		if (all_closed && !is_restarting)
 		{
 			PostQuitMessage(0);
 			return 0;
 		}
 	}
 	break;
+	case WM_SIZE:
+		resized = (wparam != SIZE_MINIMIZED);
+		break;
 	case WM_SYSCHAR:
-		if (wparam == VK_RETURN && (HIWORD(lparam) & KF_ALTDOWN))
-		{
-			platform::window win{ platform::window_id{(id::id_type)GetWindowLongPtr(hwnd, GWLP_USERDATA)} };\
-				win.set_fullscreen(!win.is_fullscreen());
-			return 0;
-		}
+		toggle_fullscreen = (wparam == VK_RETURN && (HIWORD(lparam) & KF_ALTDOWN));
 		break;
 	case WM_KEYDOWN:
 		if (wparam == VK_ESCAPE)
 		{
 			PostMessage(hwnd, WM_CLOSE, 0, 0);
 			return 0;
+		}
+		else if (wparam == VK_F11)
+		{
+			is_restarting = true;
+			test_shutdown();
+			test_initialize();
+		}
+	}
+
+	if ((resized && GetAsyncKeyState(VK_LBUTTON) >= 0)  || toggle_fullscreen)
+	{
+		platform::window win{ platform::window_id{(id::id_type)GetWindowLongPtr(hwnd, GWLP_USERDATA)} };
+		for (u32 i{ 0 }; i < _countof(_surfaces); ++i)
+		{
+			if (win.get_id() == _surfaces[i].window.get_id())
+			{
+				if (toggle_fullscreen)
+				{
+					win.set_fullscreen(!win.is_fullscreen());
+					return 0;
+				}
+				else
+				{
+					_surfaces[i].surface.resize(win.width(), win.height());
+					resized = false;
+				}
+				break;
+			}
 		}
 	}
 
@@ -75,7 +108,7 @@ void destroy_render_surface(graphics::render_surface& surface)
 }
 
 bool
-engine_test::initialize()
+test_initialize()
 {
 	while (!compile_shaders())
 	{
@@ -87,17 +120,33 @@ engine_test::initialize()
 
 	platform::window_init_info info[]
 	{
-		{&win_proc, nullptr, L"Test window 1", 100, 100, 400, 800},
-		{&win_proc, nullptr, L"Test window 2", 150, 150, 800, 400},
-		{&win_proc, nullptr, L"Test window 3", 200, 200, 400, 800},
-		{&win_proc, nullptr, L"Test window 4", 250, 250, 800, 400},
+		{&win_proc, nullptr, L"Render window 1", 100 + 500, 100, 400, 800},
+		{&win_proc, nullptr, L"Render window 2", 150 + 500, 150, 800, 400},
+		{&win_proc, nullptr, L"Render window 3", 200 + 500, 200, 400, 800},
+		{&win_proc, nullptr, L"Render window 4", 250 + 500, 250, 800, 400},
 	};
 	static_assert(_countof(info) == _countof(_surfaces));
 
 	for (u32 i{ 0 }; i < _countof(_surfaces); ++i)
 		create_render_surface(_surfaces[i], info[i]);
-	
+
+	is_restarting = false;
 	return true;
+}
+
+void
+test_shutdown()
+{
+	for (u32 i{ 0 }; i < _countof(_surfaces); ++i)
+		destroy_render_surface(_surfaces[i]);
+
+	graphics::shutdown();
+}
+
+bool
+engine_test::initialize()
+{
+	return test_initialize();
 }
 
 void
@@ -118,10 +167,7 @@ engine_test::run()
 void
 engine_test::shutdown()
 {
-	for (u32 i{ 0 }; i < _countof(_surfaces); ++i)
-		destroy_render_surface(_surfaces[i]);
-
-	graphics::shutdown();
+	return test_shutdown();
 }
 
 #endif

@@ -63,7 +63,7 @@ private:
         {
             var projectName = Project.Current.Name.Trim();
             if (string.IsNullOrEmpty(projectName)) return string.Empty;
-            projectName = Regex.Replace(projectName, @"[^A-Za-z0-9_]", "");
+
             return projectName;
         }
 
@@ -73,12 +73,13 @@ private:
             var name = scriptName.Text.Trim();
             var path = scriptPath.Text.Trim();
             string errorMsg = string.Empty;
-            var nameRegex = new Regex(@"[^A-Za-z_][A-za-z0-9_]*$");
+            var nameRegex = new Regex(@"^[A-Za-z_][A-za-z0-9_]*$");
+
             if (string.IsNullOrEmpty(name))
             {
                 errorMsg = "Type In A Script Name.";
             }
-            else if (nameRegex.IsMatch(name))
+            else if (!nameRegex.IsMatch(name))
             {
                 errorMsg = "Invalid Character(s) Used In Script Name.";
             }
