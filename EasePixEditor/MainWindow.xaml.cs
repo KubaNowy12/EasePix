@@ -1,7 +1,9 @@
-﻿using EasePixEditor.GameProject;
+﻿using EasePixEditor.Content;
+using EasePixEditor.GameProject;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -90,7 +92,10 @@ namespace EasePixEditor
             else
             {
                 Project.Current?.Unload();
-                DataContext = projectBrowser.DataContext;
+                var project = projectBrowser.DataContext as Project;
+                Debug.Assert(project != null);
+                ContentWatcher.Reset(project.ContentPath, project.Path);
+                DataContext = project;
             }
         }
     }
