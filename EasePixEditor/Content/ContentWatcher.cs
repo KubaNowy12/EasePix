@@ -37,11 +37,11 @@ namespace EasePixEditor.Content
 
         public static void EnableFileWatcher(bool isEnabled)
         {
-            if(_fileWatcherEnableCounter > 0 && isEnabled)
+            if (_fileWatcherEnableCounter > 0 && isEnabled)
             {
                 --_fileWatcherEnableCounter;
             }
-            else if(!isEnabled)
+            else if (!isEnabled)
             {
                 ++_fileWatcherEnableCounter;
             }
@@ -53,7 +53,7 @@ namespace EasePixEditor.Content
 
             ContentInfoCache.Reset(projectPath);
 
-            if(!string.IsNullOrEmpty(contentFolder))
+            if (!string.IsNullOrEmpty(contentFolder))
             {
                 Debug.Assert(Directory.Exists(contentFolder));
                 _contentWatcher.Path = contentFolder;
@@ -69,7 +69,7 @@ namespace EasePixEditor.Content
 
         private static void Refresh(object sender, DelayEventTimerArgs e)
         {
-            if(_fileWatcherEnableCounter > 0)
+            if (_fileWatcherEnableCounter > 0)
             {
                 e.RepeatEvent = true;
                 return;
