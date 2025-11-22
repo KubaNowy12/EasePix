@@ -1,324 +1,295 @@
+#include "FbxImporter.h"
 #include "Geometry.h"
+
+#if _DEBUG
+#pragma comment (lib, "C:\\Program Files\\Autodesk\\FBX\\FBX SDK\\2020.3.7\\lib\\x64\\debug\\libfbxsdk-md.lib")
+#pragma comment (lib, "C:\\Program Files\\Autodesk\\FBX\\FBX SDK\\2020.3.7\\lib\\x64\\debug\\libxml2-md.lib")
+#pragma comment (lib, "C:\\Program Files\\Autodesk\\FBX\\FBX SDK\\2020.3.7\\lib\\x64\\debug\\zlib-md.lib")
+#else
+#pragma comment (lib, "C:\\Program Files\\Autodesk\\FBX\\FBX SDK\\2020.3.7\\lib\\x64\\release\\libfbxsdk-md.lib")
+#pragma comment (lib, "C:\\Program Files\\Autodesk\\FBX\\FBX SDK\\2020.3.7\\lib\\x64\\release\\libxml2-md.lib")
+#pragma comment (lib, "C:\\Program Files\\Autodesk\\FBX\\FBX SDK\\2020.3.7\\lib\\x64\\release\\zlib-md.lib")
+#endif
 
 namespace easepix::tools {
 namespace {
 
-using namespace math;
-using namespace DirectX;
+std::mutex fbx_mutex{};
 
-void
-recalculate_normals(mesh& m)
+}
+
+bool
+fbx_context::initialize_fbx()
 {
-	const u32 num_indices{ (u32)m.raw_indices.size() };
-	m.normals.resize(num_indices);
+	assert(!is_valid());
 
-	for (u32 i{ 0 }; i < num_indices; ++i)
+	_fbx_manager = FbxManager::Create();
+	if (!_fbx_manager)
 	{
-		const u32 i0{ m.raw_indices[i] };
-		const u32 i1{ m.raw_indices[++i] };
-		const u32 i2{ m.raw_indices[++i] };
-
-		XMVECTOR v0{ XMLoadFloat3(&m.positions[i0]) };
-		XMVECTOR v1{ XMLoadFloat3(&m.positions[i1]) };
-		XMVECTOR v2{ XMLoadFloat3(&m.positions[i2]) };
-
-		XMVECTOR e0{ v1 - v0 };
-		XMVECTOR e1{ v2 - v0 };
-		XMVECTOR n{ XMVector3Normalize(XMVector3Cross(e0, e1)) };
-
-		XMStoreFloat3(&m.normals[i], n);
-		m.normals[i - 1] = m.normals[i];
-		m.normals[i - 2] = m.normals[i];
+		return false;
 	}
+
+	FbxIOSettings* ios{ FbxIOSettings::Create(_fbx_manager, IOSROOT) };
+	assert(ios);
+	_fbx_manager->SetIOSettings(ios);
+
+	return true;
 }
 
 void
-process_normals(mesh& m, f32 smoothing_angle)
+fbx_context::load_fbx_file(const char* file)
 {
-	const f32 cos_alpha{ XMScalarCos(pi - smoothing_angle * pi / 180.f) };
-	const bool is_hard_edge{ XMScalarNearEqual(smoothing_angle, 180.f, epsilon) };
-	const bool is_soft_edge{ XMScalarNearEqual(smoothing_angle, 0.f, epsilon) };
-	const u32 num_indices{ (u32)m.raw_indices.size() };
-	const u32 num_vertices{ (u32)m.positions.size() };
-	assert(num_indices && num_vertices);
-
-	m.indices.resize(num_indices);
-
-	utl::vector<utl::vector<u32>> idx_ref(num_vertices);
-	for (u32 i{ 0 }; i < num_indices; ++i)
-		idx_ref[m.raw_indices[i]].emplace_back(i);
-
-	for (u32 i{ 0 }; i < num_vertices; ++i)
+	assert(_fbx_manager && !_fbx_scene);
+	_fbx_scene = FbxScene::Create(_fbx_manager, "Importer Scene");
+	if (!_fbx_scene)
 	{
-		auto& refs{ idx_ref[i] };
-		u32 num_refs{ (u32)refs.size() };
-		for (u32 j{ 0 }; j < num_refs; ++j)
-		{
-			m.indices[refs[j]] = (u32)m.vertices.size();
-			vertex& v{ m.vertices.emplace_back() };
-			v.position = m.positions[m.raw_indices[refs[j]]];
-
-			XMVECTOR n1{ XMLoadFloat3(&m.normals[refs[j]]) };
-			if (!is_hard_edge)
-			{
-				for (u32 k{ j + 1 }; k < num_refs; ++k)
-				{
-					f32 cos_theta{ 0.f };
-					XMVECTOR n2{ XMLoadFloat3(&m.normals[refs[k]]) };
-					if (!is_soft_edge)
-					{
-						XMStoreFloat(&cos_theta, XMVector3Dot(n1, n2) * XMVector3ReciprocalLength(n1));
-					}
-
-					if (is_soft_edge || cos_theta >= cos_alpha)
-					{
-						n1 += n2;
-
-						m.indices[refs[k]] = m.indices[refs[j]];
-						refs.erase(refs.begin() + k);
-						--num_refs;
-						--k;
-					}
-				}
-			}
-			XMStoreFloat3(&v.normal, XMVector3Normalize(n1));
-		}
+		return;
 	}
+
+	FbxImporter* importer{ FbxImporter::Create(_fbx_manager, "Importer") };
+	if (!(importer &&
+		importer->Initialize(file, -1, _fbx_manager->GetIOSettings()) &&
+		importer->Import(_fbx_scene)))
+	{
+		return;
+	}
+
+	importer->Destroy();
+
+	_scene_scale = (f32)_fbx_scene->GetGlobalSettings().GetSystemUnit().GetConversionFactorTo(FbxSystemUnit::m);
 }
 
 void
-process_uvs(mesh& m)
+fbx_context::get_scene(FbxNode* root)
 {
-	utl::vector<vertex> old_vertices;
-	old_vertices.swap(m.vertices);
-	utl::vector<u32> old_indices(m.indices.size());
-	old_indices.swap(m.indices);
+	assert(is_valid());
 
-	const u32 num_vertices{ (u32)old_vertices.size() };
-	const u32 num_indices{ (u32)old_indices.size() };
-	assert(num_vertices && num_indices);
-
-	utl::vector<utl::vector<u32>> idx_ref(num_vertices);
-	for (u32 i{ 0 }; i < num_indices; ++i)
-		idx_ref[old_indices[i]].emplace_back(i);
-
-	for (u32 i{ 0 }; i < num_vertices; ++i)
+	if (!root)
 	{
-		auto& refs{ idx_ref[i] };
-		u32 num_refs{ (u32)refs.size() };
-		for (u32 j{ 0 }; j < num_refs; ++j)
-		{
-			m.indices[refs[j]] = (u32)m.vertices.size();
-			vertex& v{ old_vertices[old_indices[refs[j]]] };
-			v.uv = m.uv_sets[0][refs[j]];
-			m.vertices.emplace_back(v);
+		root = _fbx_scene->GetRootNode();
+		if (!root) return;
+	}
 
-			for (u32 k{ j + 1 }; k < num_refs; ++k)
+	const s32 num_nodes{ root->GetChildCount() };
+	for (s32 i{ 0 }; i < num_nodes; ++i)
+	{
+		FbxNode* node{ root->GetChild(i) };
+		if (!node) continue;
+
+		if (node->GetMesh())
+		{
+			lod_group lod{};
+			get_mesh(node, lod.meshes);
+			if (lod.meshes.size())
 			{
-				v2& uv1{ m.uv_sets[0][refs[k]] };
-				if (XMScalarNearEqual(v.uv.x, uv1.x, epsilon) &&
-					XMScalarNearEqual(v.uv.y, uv1.y, epsilon))
-				{
-					m.indices[refs[k]] = m.indices[refs[j]];
-					refs.erase(refs.begin() + k);
-					--num_refs;
-					--k;
-				}
+				lod.name = lod.meshes[0].name;
+				_scene->lod_groups.emplace_back(lod);
 			}
 		}
+		else if (node->GetLodGroup())
+		{
+			get_lod_group(node);
+		}
+		else
+		{
+			get_scene(node);
+		}
 	}
 }
 
 void
-pack_vertices_static(mesh& m)
+fbx_context::get_mesh(FbxNode* node, utl::vector<mesh>& meshes)
 {
-	const u32 num_vertices{ (u32)m.vertices.size() };
-	assert(num_vertices);
-	m.packed_vertices_static.reserve(num_vertices);
+	assert(node);
 
-	for (u32 i{ 0 }; i < num_vertices; ++i)
+	if (FbxMesh * fbx_mesh{ node->GetMesh() })
 	{
-		vertex& v{ m.vertices[i] };
-		const u8 signs{ (u8)((v.normal.z > 0.f) << 1) };
-		const u16 normal_x{ (u16)pack_float<16>(v.normal.x, -1.f, 1.f) };
-		const u16 normal_y{ (u16)pack_float<16>(v.normal.y, -1.f, 1.f) };
+		if (fbx_mesh->RemoveBadPolygons() < 0) return;
 
-		m.packed_vertices_static.emplace_back(packed_vertex::vertex_static
+		FbxGeometryConverter gc{ _fbx_manager };
+		fbx_mesh = static_cast<FbxMesh*>(gc.Triangulate(fbx_mesh, true));
+		if (!fbx_mesh || fbx_mesh->RemoveBadPolygons() < 0) return;
+
+		mesh m;
+		m.lod_id = (u32)meshes.size();
+		m.lod_threshold = -1.f;
+		m.name = (node->GetName()[0] != '\0') ? node->GetName() : fbx_mesh->GetName();
+
+		if (get_mesh_data(fbx_mesh, m))
+		{
+			meshes.emplace_back(m);
+		}
+	}
+
+	get_scene(node);
+}
+
+void
+fbx_context::get_lod_group(FbxNode* node)
+{
+	assert(node);
+
+	if (FbxLODGroup * lod_grp{ node->GetLodGroup() })
+	{
+		lod_group lod{};
+		lod.name = (node->GetName()[0] != '\0') ? node->GetName() : lod_grp->GetName();
+		const s32 num_lods{ lod_grp->GetNumThresholds() };
+		const s32 num_nodes{ node->GetChildCount() };
+		assert(num_lods > 0 && num_nodes > 0);
+
+		for (s32 i{ 0 }; i < num_nodes; ++i)
+		{
+			get_mesh(node->GetChild(i), lod.meshes);
+
+			if (lod.meshes.size() > 1 && lod.meshes.size() <= num_lods + 1 &&
+				lod.meshes.back().lod_threshold < 0.f)
 			{
-				v.position, {0, 0, 0}, signs,
-				{normal_x, normal_y}, {},
-				v.uv
-			});
-	}
-}
-
-void
-process_vertices(mesh& m, const geometry_import_settings& settings)
-{
-	assert((m.raw_indices.size() % 3) == 0);
-	if (settings.calculate_normals || m.normals.empty())
-	{
-		recalculate_normals(m);
-	}
-
-	process_normals(m, settings.smoothing_angle);
-
-	if (!m.uv_sets.empty())
-	{
-		process_uvs(m);
-	}
-
-	pack_vertices_static(m);
-}
-
-u64
-get_mesh_size(const mesh& m)
-{
-	const u64 num_vertices{ m.vertices.size() };
-	const u64 vertex_buffer_size{ sizeof(packed_vertex::vertex_static) * num_vertices };
-	const u64 index_size{ (num_vertices < (1 << 16)) ? sizeof(u16) : sizeof(u32) };
-	const u64 index_buffer_size{ index_size * m.indices.size() };
-	constexpr u64 su32{ sizeof(u32) };
-	const u64 size{
-		su32 + m.name.size() +
-		su32 +
-		su32 +
-		su32 +
-		su32 +
-		su32 +
-		sizeof(f32) +
-		vertex_buffer_size +
-		index_buffer_size
-	};
-
-	return size;
-}
-
-u64
-get_scene_size(const scene& scene)
-{
-	constexpr u64 su32{ sizeof(u32) };
-	u64 size
-	{
-		su32 +
-		scene.name.size() +
-		su32
-	};
-
-	for (auto& lod : scene.lod_groups)
-	{
-		u64 lod_size
-		{
-			su32 + lod.name.size() +
-			su32
-		};
-
-		for (auto& m : lod.meshes)
-		{
-			lod_size += get_mesh_size(m);
+				FbxDistance threshold;
+				lod_grp->GetThreshold((u32)lod.meshes.size() - 2, threshold);
+				lod.meshes.back().lod_threshold = threshold.value() * _scene_scale;
+			}
 		}
 
-		size += lod_size;
+		if (lod.meshes.size()) _scene->lod_groups.emplace_back(lod);
 	}
-
-	return size;
 }
 
-void
-pack_mesh_data(const mesh& m, u8* const buffer, u64& at)
+bool
+fbx_context::get_mesh_data(FbxMesh* fbx_mesh, mesh& m)
 {
-	constexpr u64 su32{ sizeof(u32) };
-	u32 s{ 0 };
-	// Mesh name
-	s = (u32)m.name.size();
-	memcpy(&buffer[at], &s, su32); at += su32;
-	memcpy(&buffer[at], m.name.c_str(), s); at += s;
-	// LOD id
-	s = m.lod_id;
-	memcpy(&buffer[at], &s, su32); at += su32;
-	// Vertex size
-	constexpr u32 vertex_size{ sizeof(packed_vertex::vertex_static) };
-	s = vertex_size;
-	memcpy(&buffer[at], &s, su32); at += su32;
-	// Number of vertices
-	const u32 num_vertices{ (u32)m.vertices.size() };
-	s = num_vertices;
-	memcpy(&buffer[at], &s, su32); at += su32;
-	// Index size (16 bit or 32 bit)
-	const u32 index_size{ (num_vertices < (1 << 16)) ? sizeof(u16) : sizeof(u32) };
-	s = index_size;
-	memcpy(&buffer[at], &s, su32); at += su32;
-	// Number of indices
-	const u32 num_indices{ (u32)m.indices.size() };
-	s = num_indices;
-	memcpy(&buffer[at], &s, su32); at += su32;
-	// LOD threshold
-	memcpy(&buffer[at], &m.lod_threshold, sizeof(f32)); at += sizeof(f32);
-	// Vertex data
-	s = vertex_size * num_vertices;
-	memcpy(&buffer[at], m.packed_vertices_static.data(), s); at += s;
-	// Index data
-	s = index_size * num_indices;
-	void* data{ (void*)m.indices.data() };
-	utl::vector<u16> indices;
+	assert(fbx_mesh);
 
-	if (index_size == sizeof(u16))
+	const s32 num_polys{ fbx_mesh->GetPolygonCount() };
+	if (num_polys <= 0) return false;
+
+	const s32 num_vertices{ fbx_mesh->GetControlPointsCount() };
+	FbxVector4* vertices{ fbx_mesh->GetControlPoints() };
+	const s32 num_indices{ fbx_mesh->GetPolygonVertexCount() };
+	s32* indices{ fbx_mesh->GetPolygonVertices() };
+
+	assert(num_vertices > 0 && vertices && num_indices > 0 && indices);
+	if (!(num_vertices > 0 && vertices && num_indices > 0 && indices)) return false;
+
+	m.raw_indices.resize(num_indices);
+	utl::vector vertex_ref(num_vertices, u32_invalid_id);
+
+	for (s32 i{ 0 }; i < num_indices; ++i)
 	{
-		indices.resize(num_indices);
-		for (u32 i{ 0 }; i < num_indices; ++i) indices[i] = (u16)m.indices[i];
-		data = (void*)indices.data();
-	}
-	memcpy(&buffer[at], data, s); at += s;
-}
+		const u32 v_idx{ (u32)indices[i] };
 
-}
-
-void
-process_scene(scene& scene, const geometry_import_settings& settings)
-{
-	for (auto& lod : scene.lod_groups)
-		for (auto& m : lod.meshes)
+		if (vertex_ref[v_idx] != u32_invalid_id)
 		{
-			process_vertices(m, settings);
+			m.raw_indices[i] = vertex_ref[v_idx];
 		}
-}
-
-void
-pack_data(const scene& scene, scene_data& data)
-{
-	constexpr u64 su32{ sizeof(u32) };
-	const u64 scene_size{ get_scene_size(scene) };
-	data.buffer_size = (u32)scene_size;
-	data.buffer = (u8*)CoTaskMemAlloc(scene_size);
-	assert(data.buffer);
-
-	u8* const buffer{ data.buffer };
-	u64 at{ 0 };
-	u32 s{ 0 };
-
-	s = (u32)scene.name.size();
-	memcpy(&buffer[at], &s, su32); at += su32;
-	memcpy(&buffer[at], scene.name.c_str(), s); at += s;
-
-	s = (u32)scene.lod_groups.size();
-	memcpy(&buffer[at], &s, su32); at += su32;
-
-	for (auto& lod : scene.lod_groups)
-	{
-		s = (u32)lod.name.size();
-		memcpy(&buffer[at], &s, su32); at += su32;
-		memcpy(&buffer[at], lod.name.c_str(), s); at += s;
-
-		s = (u32)lod.meshes.size();
-		memcpy(&buffer[at], &s, su32); at += su32;
-
-		for (auto& m : lod.meshes)
+		else
 		{
-			pack_mesh_data(m, buffer, at);
+			FbxVector4 v = vertices[v_idx] * _scene_scale;
+			m.raw_indices[i] = (u32)m.positions.size();
+			vertex_ref[v_idx] = m.raw_indices[i];
+			m.positions.emplace_back((f32)v[0], (f32)v[1], (f32)v[2]);
 		}
 	}
 
-	assert(scene_size == at);
+	assert(m.raw_indices.size() % 3 == 0);
+
+	assert(num_polys > 0);
+	FbxLayerElementArrayTemplate<s32>* mtl_indices;
+	if (fbx_mesh->GetMaterialIndices(&mtl_indices))
+	{
+		for (s32 i{ 0 }; i < num_polys; ++i)
+		{
+			const s32 mtl_index{ mtl_indices->GetAt(i) };
+			assert(mtl_index >= 0);
+			m.material_indices.emplace_back((u32)mtl_index);
+			if (std::find(m.material_used.begin(), m.material_used.end(), (u32)mtl_index) == m.material_used.end())
+			{
+				m.material_used.emplace_back((u32)mtl_index);
+			}
+		}
+	}
+
+	const bool import_normals{ !_scene_data->settings.calculate_normals };
+	const bool import_tangents{ !_scene_data->settings.calculate_tangents };
+
+	if (import_normals)
+	{
+		FbxArray<FbxVector4> normals;
+		if (fbx_mesh->GenerateNormals() &&
+			fbx_mesh->GetPolygonVertexNormals(normals) && normals.Size() > 0)
+		{
+			const s32 num_normals{ normals.Size() };
+			for (s32 i{ 0 }; i < num_normals; ++i)
+			{
+				m.normals.emplace_back((f32)normals[i][0], (f32)normals[i][1], (f32)normals[i][2]);
+			}
+		}
+		else
+		{
+			_scene_data->settings.calculate_normals = true;
+		}
+	}
+
+	if (import_tangents)
+	{
+		FbxLayerElementArrayTemplate<FbxVector4>* tangents{ nullptr };
+		if (fbx_mesh->GenerateTangentsData() &&
+			fbx_mesh->GetTangents(&tangents) &&
+			tangents && tangents->GetCount() > 0)
+		{
+			const s32 num_tangent{ tangents->GetCount() };
+			for (s32 i{ 0 }; i < num_tangent; ++i)
+			{
+				FbxVector4 t{ tangents->GetAt(i) };
+				m.tangents.emplace_back((f32)t[0], (f32)t[1], (f32)t[2], (f32)t[3]);
+			}
+		}
+		else
+		{
+			_scene_data->settings.calculate_tangents = true;
+		}
+	}
+
+	FbxStringList uv_names;
+	fbx_mesh->GetUVSetNames(uv_names);
+	const s32 uv_set_count{ uv_names.GetCount() };
+	m.uv_sets.resize(uv_set_count);
+
+	for (s32 i{ 0 }; i < uv_set_count; ++i)
+	{
+		FbxArray<FbxVector2> uvs;
+		if (fbx_mesh->GetPolygonVertexUVs(uv_names.GetStringAt(i), uvs))
+		{
+			const s32 num_uvs{ uvs.Size() };
+			for (s32 j{ 0 }; j < num_uvs; ++j)
+			{
+				m.uv_sets[i].emplace_back((f32)uvs[j][0], (f32)uvs[j][1]);
+			}
+		}
+	}
+
+	return true;
 }
 
+EDITOR_INTERFACE void
+ImportFbx(const char* file, scene_data* data)
+{
+	assert(file && data);
+	scene scene{};
+
+	{
+		std::lock_guard lock{ fbx_mutex };
+		fbx_context fbx_context{ file, &scene, data };
+		if (fbx_context.is_valid())
+		{
+			fbx_context.get_scene();
+		}
+		else
+		{
+			return;
+		}
+	}
+
+	process_scene(scene, data->settings);
+	pack_data(scene, *data);
+}
 }
