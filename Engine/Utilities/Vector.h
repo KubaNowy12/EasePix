@@ -273,7 +273,6 @@ public:
 
 	[[nodiscard]] constexpr T* begin()
 	{
-		assert(_data);
 		return std::addressof(_data[0]);
 	}
 

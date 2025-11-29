@@ -30,6 +30,8 @@ namespace EasePixEditor.GameProject
         public string Solution => $@"{Path}{Name}.sln";
         public string ContentPath => $@"{Path}Content\";
 
+        public string TempFolder => $@"{Path}.EasePix\Temp\";
+
         private int _buildConfig;
         [DataMember]
         public int BuildConfig
@@ -164,6 +166,15 @@ namespace EasePixEditor.GameProject
             VisualStudio.CloseVisualStudio();
             UndoRedo.Reset();
             Logger.Clear();
+            DeleteTempFolder();
+        }
+
+        private void DeleteTempFolder()
+        {
+            if(Directory.Exists(TempFolder))
+            {
+                Directory.Delete(TempFolder, true);
+            }
         }
 
         public static void Save(Project project)
